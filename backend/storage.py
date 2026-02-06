@@ -81,6 +81,31 @@ async def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
             "messages": formatted_messages
         }
 
+async def get_chat_history(conversation_id: str) -> List[Dict[str, str]]:
+    """
+    Get simplified chat history for LLM context.
+    Returns list of {'role': 'user'|'assistant', 'content': '...'}
+    """
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(MessageModel)
+            .where(MessageModel.conversation_id == conversation_id)
+            .order_by(MessageModel.created_at)
+        )
+        messages = result.scalars().all()
+        
+        history = []
+        for msg in messages:
+            # For assistant messages, we use the stored 'content' (which is the final response)
+            # This is much simpler than reconstructing from the complex JSON structure
+            if msg.content:
+                history.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
+                
+        return history
+
 async def list_conversations() -> List[Dict[str, Any]]:
     """
     List all conversations (metadata only).

@@ -113,6 +113,9 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
+    # Get history for context (before adding new message)
+    history = await storage.get_chat_history(conversation_id)
+
     # Add user message
     await storage.add_user_message(conversation_id, request.content)
 
@@ -123,7 +126,8 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
-        request.content
+        request.content,
+        history
     )
 
     # Add assistant message with all stages
@@ -160,6 +164,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
     async def event_generator():
         try:
+            # Get history for context (before adding new message)
+            history = await storage.get_chat_history(conversation_id)
+
             # Add user message
             await storage.add_user_message(conversation_id, request.content)
 
@@ -170,12 +177,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
             # Stage 1: Collect responses
             yield f"data: {json.dumps({'type': 'stage1_start'})}\n\n"
-            stage1_results = await stage1_collect_responses(request.content)
+            stage1_results = await stage1_collect_responses(request.content, history)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
             # Stage 2: Collect rankings
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
+            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, history)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
             metadata = {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}
             yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
@@ -184,7 +191,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             
             full_response = ""
-            async for chunk in stage3_synthesize_final_stream(request.content, stage1_results, stage2_results):
+            async for chunk in stage3_synthesize_final_stream(request.content, stage1_results, stage2_results, history):
                 full_response += chunk
                 yield f"data: {json.dumps({'type': 'stage3_chunk', 'chunk': chunk})}\n\n"
             
