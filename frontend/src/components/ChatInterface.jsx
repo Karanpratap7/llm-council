@@ -97,7 +97,7 @@ export default function ChatInterface({
                   )}
 
                   {/* Stage 3 */}
-                  {msg.loading?.stage3 && (
+                  {msg.loading?.stage3 && !msg.stage3?.response && (
                     <div className="stage-loading">
                       <div className="spinner"></div>
                       <span>Running Stage 3: Final synthesis...</span>

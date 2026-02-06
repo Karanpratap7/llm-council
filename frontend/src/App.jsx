@@ -140,10 +140,31 @@ function App() {
             });
             break;
 
+          case 'stage3_chunk':
+            setCurrentConversation((prev) => {
+              const messages = [...prev.messages];
+              const lastMsg = messages[messages.length - 1];
+
+              // Init stage3 if null (it should have been init by stage3_start but let's be safe)
+              const currentModel = lastMsg.stage3?.model || 'chairman';
+              const currentResponse = lastMsg.stage3?.response || '';
+
+              lastMsg.stage3 = {
+                model: currentModel,
+                response: currentResponse + event.chunk
+              };
+
+              // Keep loading true
+              lastMsg.loading.stage3 = true;
+              return { ...prev, messages };
+            });
+            break;
+
           case 'stage3_complete':
             setCurrentConversation((prev) => {
               const messages = [...prev.messages];
               const lastMsg = messages[messages.length - 1];
+              // Ensure we have the final full response or use what we have
               lastMsg.stage3 = event.data;
               lastMsg.loading.stage3 = false;
               return { ...prev, messages };

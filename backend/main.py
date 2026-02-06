@@ -1,18 +1,38 @@
 """FastAPI backend for LLM Council."""
 
+import uuid
+import json
+import asyncio
+from contextlib import asynccontextmanager
+from typing import List, Dict, Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any
-import uuid
-import json
-import asyncio
 
 from . import storage
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings
+from .council import (
+    run_full_council, 
+    generate_conversation_title, 
+    stage1_collect_responses, 
+    stage2_collect_rankings, 
+    stage3_synthesize_final, 
+    stage3_synthesize_final_stream,
+    calculate_aggregate_rankings
+)
 
-app = FastAPI(title="LLM Council API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await storage.initialize_storage()
+    yield
+    # Shutdown
+    pass
+
+
+app = FastAPI(title="LLM Council API", lifespan=lifespan)
 
 # Enable CORS for local development
 app.add_middleware(
@@ -59,21 +79,21 @@ async def root():
 @app.get("/api/conversations", response_model=List[ConversationMetadata])
 async def list_conversations():
     """List all conversations (metadata only)."""
-    return storage.list_conversations()
+    return await storage.list_conversations()
 
 
 @app.post("/api/conversations", response_model=Conversation)
-async def create_conversation(request: CreateConversationRequest):
+async def create_conversation(request: CreateConversationRequest = None):
     """Create a new conversation."""
     conversation_id = str(uuid.uuid4())
-    conversation = storage.create_conversation(conversation_id)
+    conversation = await storage.create_conversation(conversation_id)
     return conversation
 
 
 @app.get("/api/conversations/{conversation_id}", response_model=Conversation)
 async def get_conversation(conversation_id: str):
     """Get a specific conversation with all its messages."""
-    conversation = storage.get_conversation(conversation_id)
+    conversation = await storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
@@ -86,7 +106,7 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     Returns the complete response with all stages.
     """
     # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
+    conversation = await storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -94,12 +114,12 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     is_first_message = len(conversation["messages"]) == 0
 
     # Add user message
-    storage.add_user_message(conversation_id, request.content)
+    await storage.add_user_message(conversation_id, request.content)
 
     # If this is the first message, generate a title
     if is_first_message:
         title = await generate_conversation_title(request.content)
-        storage.update_conversation_title(conversation_id, title)
+        await storage.update_conversation_title(conversation_id, title)
 
     # Run the 3-stage council process
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
@@ -107,11 +127,12 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     )
 
     # Add assistant message with all stages
-    storage.add_assistant_message(
+    await storage.add_assistant_message(
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        metadata
     )
 
     # Return the complete response with metadata
@@ -130,7 +151,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     Returns Server-Sent Events as each stage completes.
     """
     # Check if conversation exists
-    conversation = storage.get_conversation(conversation_id)
+    conversation = await storage.get_conversation(conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -140,7 +161,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
     async def event_generator():
         try:
             # Add user message
-            storage.add_user_message(conversation_id, request.content)
+            await storage.add_user_message(conversation_id, request.content)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -156,25 +177,40 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
             stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results)
             aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}})}\n\n"
+            metadata = {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}
+            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
-            # Stage 3: Synthesize final answer
+            # Stage 3: Synthesize final answer (with streaming)
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
-            stage3_result = await stage3_synthesize_final(request.content, stage1_results, stage2_results)
+            
+            full_response = ""
+            async for chunk in stage3_synthesize_final_stream(request.content, stage1_results, stage2_results):
+                full_response += chunk
+                yield f"data: {json.dumps({'type': 'stage3_chunk', 'chunk': chunk})}\n\n"
+            
+            stage3_result = {
+                "model": "chairman", # Should be CHAIRMAN_MODEL constant, but handled by logic
+                "response": full_response
+            }
             yield f"data: {json.dumps({'type': 'stage3_complete', 'data': stage3_result})}\n\n"
 
             # Wait for title generation if it was started
             if title_task:
-                title = await title_task
-                storage.update_conversation_title(conversation_id, title)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                # Give it a timeout so it doesn't block forever if stuck
+                try:
+                    title = await asyncio.wait_for(title_task, timeout=5.0)
+                    await storage.update_conversation_title(conversation_id, title)
+                    yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                except Exception as e:
+                    print(f"Title generation failed or timed out: {e}")
 
             # Save complete assistant message
-            storage.add_assistant_message(
+            await storage.add_assistant_message(
                 conversation_id,
                 stage1_results,
                 stage2_results,
-                stage3_result
+                stage3_result,
+                metadata
             )
 
             # Send completion event
@@ -182,6 +218,7 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
 
         except Exception as e:
             # Send error event
+            print(f"Error in stream: {e}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

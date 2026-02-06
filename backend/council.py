@@ -168,10 +168,64 @@ Provide a clear, well-reasoned final answer that represents the council's collec
             "response": "Error: Unable to generate final synthesis."
         }
 
+
     return {
         "model": CHAIRMAN_MODEL,
         "response": response.get('content', '')
     }
+
+
+async def stage3_synthesize_final_stream(
+    user_query: str,
+    stage1_results: List[Dict[str, Any]],
+    stage2_results: List[Dict[str, Any]]
+):
+    """
+    Stage 3: Chairman synthesizes final response (streaming).
+    
+    Yields:
+        Chunks of the response text
+    """
+    from .openrouter import query_model_stream
+    
+    # Build comprehensive context for chairman
+    stage1_text = "\n\n".join([
+        f"Model: {result['model']}\nResponse: {result['response']}"
+        for result in stage1_results
+    ])
+
+    stage2_text = "\n\n".join([
+        f"Model: {result['model']}\nRanking: {result['ranking']}"
+        for result in stage2_results
+    ])
+
+    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+
+Original Question: {user_query}
+
+STAGE 1 - Individual Responses:
+{stage1_text}
+
+STAGE 2 - Peer Rankings:
+{stage2_text}
+
+Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
+- The individual responses and their insights
+- The peer rankings and what they reveal about response quality
+- Any patterns of agreement or disagreement
+
+Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+
+    messages = [{"role": "user", "content": chairman_prompt}]
+
+    # Stream the chairman model
+    full_response = ""
+    async for chunk in query_model_stream(CHAIRMAN_MODEL, messages):
+        full_response += chunk
+        yield chunk
+        
+    return
+
 
 
 def parse_ranking_from_text(ranking_text: str) -> List[str]:
@@ -274,8 +328,8 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    # Use nvidia/nemotron-3-nano-30b-a3b:free for title generation (free and fast)
+    response = await query_model(COUNCIL_MODELS[0], messages, timeout=30.0)
 
     if response is None:
         # Fallback to a generic title

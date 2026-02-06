@@ -1,6 +1,7 @@
 """OpenRouter API client for making LLM requests."""
 
 import httpx
+import json
 from typing import List, Dict, Any, Optional
 from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
 
@@ -77,3 +78,61 @@ async def query_models_parallel(
 
     # Map models to their responses
     return {model: response for model, response in zip(models, responses)}
+
+
+async def query_model_stream(
+    model: str,
+    messages: List[Dict[str, str]],
+    timeout: float = 120.0
+):
+    """
+    Query a model and stream the response tokens.
+    
+    Args:
+        model: OpenRouter model identifier
+        messages: List of message dicts
+        timeout: Request timeout in seconds
+        
+    Yields:
+        String chunks of the response content
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True # Enable streaming
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST", 
+                OPENROUTER_API_URL, 
+                headers=headers, 
+                json=payload
+            ) as response:
+                response.raise_for_status()
+                
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        
+                        try:
+                            data = json.loads(data_str)
+                            delta = data['choices'][0]['delta']
+                            content = delta.get('content')
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+                            
+    except Exception as e:
+        print(f"Error streaming model {model}: {e}")
+        yield f"[ERROR: {str(e)}]"
+
