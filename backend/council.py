@@ -5,19 +5,29 @@ from .openrouter import query_models_parallel, query_model
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
 
 
-async def stage1_collect_responses(user_query: str, history: List[Dict[str, str]] = []) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str, 
+    history: List[Dict[str, str]] = [],
+    context: str = ""
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
         history: Previous conversation history
+        context: RAG context string
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
+    # Construct message content with context
+    content = user_query
+    if context:
+        content = f"Reference Documents:\n{context}\n\nQuestion: {user_query}"
+
     # Combine history with new user query
-    messages = history + [{"role": "user", "content": user_query}]
+    messages = history + [{"role": "user", "content": content}]
 
     # Query all models in parallel
     responses = await query_models_parallel(COUNCIL_MODELS, messages)
@@ -37,7 +47,8 @@ async def stage1_collect_responses(user_query: str, history: List[Dict[str, str]
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
-    history: List[Dict[str, str]] = []
+    history: List[Dict[str, str]] = [],
+    context: str = ""
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
     """
     Stage 2: Each model ranks the anonymized responses.
@@ -46,6 +57,7 @@ async def stage2_collect_rankings(
         user_query: The original user query
         stage1_results: Results from Stage 1
         history: Previous conversation history
+        context: RAG context string
 
     Returns:
         Tuple of (rankings list, label_to_model mapping)
@@ -74,8 +86,14 @@ async def stage2_collect_rankings(
             history_text += f"{role}: {msg['content']}\n"
         history_text += "\n"
 
+    # Format rag context
+    rag_text = ""
+    if context:
+        rag_text = f"\n\nReference Documents:\n{context}\n"
+
     ranking_prompt = f"""You are evaluating different responses to the following question.
 
+{rag_text}
 {history_text}Question: {user_query}
 
 Here are the responses from different models (anonymized):
@@ -129,7 +147,8 @@ async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
-    history: List[Dict[str, str]] = []
+    history: List[Dict[str, str]] = [],
+    context: str = ""
 ) -> Dict[str, Any]:
     """
     Stage 3: Chairman synthesizes final response.
@@ -139,6 +158,7 @@ async def stage3_synthesize_final(
         stage1_results: Individual model responses from Stage 1
         stage2_results: Rankings from Stage 2
         history: Previous conversation history
+        context: RAG context string
 
     Returns:
         Dict with 'model' and 'response' keys
@@ -163,8 +183,14 @@ async def stage3_synthesize_final(
             history_text += f"{role}: {msg['content']}\n"
         history_text += "\n"
 
+    # Format rag context
+    rag_text = ""
+    if context:
+        rag_text = f"\n\nReference Documents:\n{context}\n"
+
     chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
 
+{rag_text}
 {history_text}Original Question: {user_query}
 
 STAGE 1 - Individual Responses:
@@ -203,7 +229,8 @@ async def stage3_synthesize_final_stream(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
-    history: List[Dict[str, str]] = []
+    history: List[Dict[str, str]] = [],
+    context: str = ""
 ):
     """
     Stage 3: Chairman synthesizes final response (streaming).
@@ -233,8 +260,14 @@ async def stage3_synthesize_final_stream(
             history_text += f"{role}: {msg['content']}\n"
         history_text += "\n"
 
+    # Format rag context
+    rag_text = ""
+    if context:
+        rag_text = f"\n\nReference Documents:\n{context}\n"
+
     chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
 
+{rag_text}
 {history_text}Original Question: {user_query}
 
 STAGE 1 - Individual Responses:
@@ -381,19 +414,24 @@ Title:"""
     return title
 
 
-async def run_full_council(user_query: str, history: List[Dict[str, str]] = []) -> Tuple[List, List, Dict, Dict]:
+async def run_full_council(
+    user_query: str, 
+    history: List[Dict[str, str]] = [],
+    context: str = ""
+) -> Tuple[List, List, Dict, Dict]:
     """
     Run the complete 3-stage council process.
 
     Args:
         user_query: The user's question
         history: Previous conversation history
+        context: RAG context string
 
     Returns:
         Tuple of (stage1_results, stage2_results, stage3_result, metadata)
     """
     # Stage 1: Collect individual responses
-    stage1_results = await stage1_collect_responses(user_query, history)
+    stage1_results = await stage1_collect_responses(user_query, history, context)
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -403,7 +441,7 @@ async def run_full_council(user_query: str, history: List[Dict[str, str]] = []) 
         }, {}
 
     # Stage 2: Collect rankings
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, history)
+    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, history, context)
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -413,7 +451,8 @@ async def run_full_council(user_query: str, history: List[Dict[str, str]] = []) 
         user_query,
         stage1_results,
         stage2_results,
-        history
+        history,
+        context
     )
 
     # Prepare metadata
