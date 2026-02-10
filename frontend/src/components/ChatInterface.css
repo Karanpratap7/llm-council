@@ -1,3 +1,4 @@
+
 .chat-interface {
   flex: 1;
   display: flex;
@@ -160,4 +161,49 @@
   cursor: not-allowed;
   background: #ccc;
   border-color: #ccc;
+}
+
+/* Upload Section */
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end; /* Align with input bottom */
+  margin-bottom: 14px; /* Align icon better */
+}
+
+.upload-button {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.upload-button:hover:not(:disabled) {
+  background: #f0f0f0;
+  color: #333;
+  border-color: #ccc;
+}
+
+.upload-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.upload-status {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
