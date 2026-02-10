@@ -57,6 +57,11 @@ function App() {
     setCurrentConversationId(id);
   };
 
+  const handleUploadFile = async (file) => {
+    if (!currentConversationId) return;
+    return await api.uploadFile(currentConversationId, file);
+  };
+
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
 
@@ -213,6 +218,7 @@ function App() {
       <ChatInterface
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
+        onUploadFile={handleUploadFile}
         isLoading={isLoading}
       />
     </div>
