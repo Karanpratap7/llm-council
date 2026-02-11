@@ -209,13 +209,17 @@ Provide a clear, well-reasoned final answer that represents the council's collec
     messages = [{"role": "user", "content": chairman_prompt}]
 
     # Query the chairman model
-    response = await query_model(CHAIRMAN_MODEL, messages)
+    try:
+        response = await query_model(CHAIRMAN_MODEL, messages)
+    except Exception as e:
+        print(f"Error querying chairman model: {e}")
+        response = None
 
     if response is None:
         # Fallback if chairman fails
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "Error: Unable to generate final synthesis."
+            "response": "The Chairman model is currently unavailable or encountered an error. Please refer to the council member responses and rankings above."
         }
 
 
@@ -287,9 +291,14 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     # Stream the chairman model
     full_response = ""
-    async for chunk in query_model_stream(CHAIRMAN_MODEL, messages):
-        full_response += chunk
-        yield chunk
+    try:
+        async for chunk in query_model_stream(CHAIRMAN_MODEL, messages):
+            full_response += chunk
+            yield chunk
+    except Exception as e:
+        print(f"Error streaming chairman model: {e}")
+        error_msg = f"\n\n[System: Chairman model failed. Verdict skipped.]"
+        yield error_msg
         
     return
 
