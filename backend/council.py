@@ -46,9 +46,9 @@ async def stage1_collect_responses(
 
 
 
+
 async def stage3_synthesize_final(
     user_query: str,
-    stage1_results: List[Dict[str, Any]],
     stage1_results: List[Dict[str, Any]],
     history: List[Dict[str, str]] = [],
     context: str = ""
@@ -71,11 +71,6 @@ async def stage3_synthesize_final(
         for result in stage1_results
     ])
 
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
-
     # Format history for context if present
     history_text = ""
     if history:
@@ -90,7 +85,7 @@ async def stage3_synthesize_final(
     if context:
         rag_text = f"\n\nReference Documents:\n{context}\n"
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question.
 
 {rag_text}
 {history_text}Original Question: {user_query}
@@ -98,12 +93,8 @@ async def stage3_synthesize_final(
 STAGE 1 - Individual Responses:
 {stage1_text}
 
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
 Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
 - The individual responses and their insights
-- The peer rankings and what they reveal about response quality
 - Any patterns of agreement or disagreement
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
@@ -121,7 +112,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         # Fallback if chairman fails
         return {
             "model": CHAIRMAN_MODEL,
-            "response": "The Chairman model is currently unavailable or encountered an error. Please refer to the council member responses and rankings above."
+            "response": "The Chairman model is currently unavailable or encountered an error. Please refer to the council member responses above."
         }
 
 
@@ -132,7 +123,6 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
 
 async def stage3_synthesize_final_stream(
-    user_query: str,
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     history: List[Dict[str, str]] = [],
@@ -152,11 +142,6 @@ async def stage3_synthesize_final_stream(
         for result in stage1_results
     ])
 
-    stage2_text = "\n\n".join([
-        f"Model: {result['model']}\nRanking: {result['ranking']}"
-        for result in stage2_results
-    ])
-
     # Format history for context if present
     history_text = ""
     if history:
@@ -171,7 +156,7 @@ async def stage3_synthesize_final_stream(
     if context:
         rag_text = f"\n\nReference Documents:\n{context}\n"
 
-    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+    chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question.
 
 {rag_text}
 {history_text}Original Question: {user_query}
@@ -179,12 +164,8 @@ async def stage3_synthesize_final_stream(
 STAGE 1 - Individual Responses:
 {stage1_text}
 
-STAGE 2 - Peer Rankings:
-{stage2_text}
-
 Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
 - The individual responses and their insights
-- The peer rankings and what they reveal about response quality
 - Any patterns of agreement or disagreement
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
@@ -203,9 +184,6 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         yield error_msg
         
     return
-
-
-
 
 
 async def generate_conversation_title(user_query: str) -> str:
@@ -248,8 +226,6 @@ Title:"""
 
 async def run_full_council(
     user_query: str, 
-    history: List[Dict[str, str]] = [],
-    context: str = ""
     history: List[Dict[str, str]] = [],
     context: str = ""
 ) -> Tuple[List, Dict]:
