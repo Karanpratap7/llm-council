@@ -81,6 +81,24 @@ class RAGEngine:
             "total_docs": len(store["documents"])
         }
 
+    def remove_file(self, conversation_id: str, filename: str) -> bool:
+        """
+        Remove a file and its associated chunks from the store.
+        """
+        store = self._load_store(conversation_id)
+        if not store["documents"]:
+            return False
+            
+        initial_count = len(store["documents"])
+        # Filter out docs with matching source
+        store["documents"] = [d for d in store["documents"] if d["source"] != filename]
+        
+        if len(store["documents"]) < initial_count:
+            self._save_store(conversation_id, store)
+            return True
+            
+        return False
+
     def search(self, conversation_id: str, query: str, k: int = 3) -> List[Dict[str, Any]]:
         """
         Search for relevant chunks in the conversation's documents.

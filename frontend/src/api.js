@@ -134,4 +134,20 @@ export const api = {
     }
     return response.json();
   },
+
+  /**
+   * Delete a file from RAG context.
+   */
+  async deleteFile(conversationId, filename) {
+    const response = await fetch(
+      `${API_BASE}/api/conversations/${conversationId}/files/${filename}`,
+      {
+        method: 'DELETE',
+      }
+    );
+    if (!response.ok) {
+      throw new Error('Failed to delete file');
+    }
+    return response.json();
+  },
 };

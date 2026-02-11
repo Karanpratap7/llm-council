@@ -118,6 +118,25 @@ async def upload_file(conversation_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.delete("/api/conversations/{conversation_id}/files/{filename}")
+async def delete_file(conversation_id: str, filename: str):
+    """Remove a file from RAG context."""
+    # Check if conversation exists
+    conversation = await storage.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+        
+    try:
+        success = rag_engine.remove_file(conversation_id, filename)
+        if not success:
+             raise HTTPException(status_code=404, detail="File not found in context")
+        return {"status": "success", "filename": filename}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """

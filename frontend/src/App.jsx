@@ -62,6 +62,11 @@ function App() {
     return await api.uploadFile(currentConversationId, file);
   };
 
+  const handleDeleteFile = async (filename) => {
+    if (!currentConversationId) return;
+    return await api.deleteFile(currentConversationId, filename);
+  };
+
   const handleSendMessage = async (content) => {
     if (!currentConversationId) return;
 
@@ -219,6 +224,7 @@ function App() {
         conversation={currentConversation}
         onSendMessage={handleSendMessage}
         onUploadFile={handleUploadFile}
+        onDeleteFile={handleDeleteFile}
         isLoading={isLoading}
       />
     </div>

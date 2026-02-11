@@ -9,10 +9,12 @@ export default function ChatInterface({
   conversation,
   onSendMessage,
   onUploadFile,
+  onDeleteFile,
   isLoading,
 }) {
   const [input, setInput] = useState('');
   const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState([]);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -47,13 +49,23 @@ export default function ChatInterface({
     setUploadStatus('Uploading...');
     try {
       const result = await onUploadFile(file);
-      setUploadStatus(`Uploaded: ${result.filename}`);
-      setTimeout(() => setUploadStatus(''), 5000);
+      setUploadStatus(''); // Clear status on success, show in list instead
+      setUploadedFiles(prev => [...prev, { name: result.filename, id: Date.now() }]);
     } catch (error) {
       setUploadStatus(`Error: ${error.message}`);
     }
     // Clear input
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveFile = async (filename) => {
+    try {
+      await onDeleteFile(filename);
+      setUploadedFiles(prev => prev.filter(f => f.name !== filename));
+    } catch (error) {
+      console.error("Failed to remove file:", error);
+      setUploadStatus(`Error removing file: ${error.message}`);
+    }
   };
 
   if (!conversation) {
@@ -140,41 +152,64 @@ export default function ChatInterface({
       </div>
 
       <form className="input-form" onSubmit={handleSubmit}>
-        <div className="upload-section">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-            accept=".pdf,.txt,.md"
-          />
-          <button
-            type="button"
-            className="upload-button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading}
-            title="Upload document for context"
-          >
-            📎
-          </button>
-          {uploadStatus && <span className="upload-status">{uploadStatus}</span>}
+        <div className="input-container">
+          {uploadedFiles.length > 0 && (
+            <div className="file-list">
+              {uploadedFiles.map(file => (
+                <div key={file.id} className="file-chip">
+                  <span className="file-icon">📄</span>
+                  <span className="file-name">{file.name}</span>
+                  <button
+                    type="button"
+                    className="remove-file-btn"
+                    onClick={() => handleRemoveFile(file.name)}
+                    title="Remove file"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="input-row">
+            <div className="upload-section">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                style={{ display: 'none' }}
+                accept=".pdf,.txt,.md"
+              />
+              <button
+                type="button"
+                className="upload-button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                title="Upload document for context"
+              >
+                📎
+              </button>
+            </div>
+            <textarea
+              className="message-input"
+              placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              rows={1}
+            />
+            <button
+              type="submit"
+              className="send-button"
+              disabled={!input.trim() || isLoading}
+            >
+              Send
+            </button>
+          </div>
+          {uploadStatus && <div className="upload-status">{uploadStatus}</div>}
         </div>
-        <textarea
-          className="message-input"
-          placeholder="Ask your question... (Shift+Enter for new line, Enter to send)"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={isLoading}
-          rows={3}
-        />
-        <button
-          type="submit"
-          className="send-button"
-          disabled={!input.trim() || isLoading}
-        >
-          Send
-        </button>
       </form>
     </div>
   );
