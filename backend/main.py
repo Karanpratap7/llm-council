@@ -17,10 +17,9 @@ from .council import (
     run_full_council, 
     generate_conversation_title, 
     stage1_collect_responses, 
-    stage2_collect_rankings, 
+    stage1_collect_responses, 
     stage3_synthesize_final, 
-    stage3_synthesize_final_stream,
-    calculate_aggregate_rankings
+    stage3_synthesize_final_stream
 )
 
 
@@ -140,7 +139,7 @@ async def delete_file(conversation_id: str, filename: str):
 @app.post("/api/conversations/{conversation_id}/message")
 async def send_message(conversation_id: str, request: SendMessageRequest):
     """
-    Send a message and run the 3-stage council process.
+    Send a message and run the council process.
     Returns the complete response with all stages.
     """
     # Check if conversation exists
@@ -168,28 +167,28 @@ async def send_message(conversation_id: str, request: SendMessageRequest):
     if docs:
         context = "\n\n".join([f"Source: {d['source']}\nContent: {d['text']}" for d in docs])
 
-    # Run the 3-stage council process
-    stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
+    # Run the council process
+    stage1_results, stage3_result = await run_full_council(
         request.content,
         history,
         context
     )
 
-    # Add assistant message with all stages
+    # Add assistant message with results
     await storage.add_assistant_message(
         conversation_id,
         stage1_results,
-        stage2_results,
+        [], # No stage 2
         stage3_result,
-        metadata
+        {}  # No metadata
     )
 
-    # Return the complete response with metadata
+    # Return the complete response
     return {
         "stage1": stage1_results,
-        "stage2": stage2_results,
+        "stage2": [], 
         "stage3": stage3_result,
-        "metadata": metadata,
+        "metadata": {},
         "context": docs  # Return context for UI debugging/citations if needed
     }
 
@@ -234,18 +233,12 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             stage1_results = await stage1_collect_responses(request.content, history, context)
             yield f"data: {json.dumps({'type': 'stage1_complete', 'data': stage1_results})}\n\n"
 
-            # Stage 2: Collect rankings
-            yield f"data: {json.dumps({'type': 'stage2_start'})}\n\n"
-            stage2_results, label_to_model = await stage2_collect_rankings(request.content, stage1_results, history, context)
-            aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
-            metadata = {'label_to_model': label_to_model, 'aggregate_rankings': aggregate_rankings}
-            yield f"data: {json.dumps({'type': 'stage2_complete', 'data': stage2_results, 'metadata': metadata})}\n\n"
 
             # Stage 3: Synthesize final answer (with streaming)
             yield f"data: {json.dumps({'type': 'stage3_start'})}\n\n"
             
             full_response = ""
-            async for chunk in stage3_synthesize_final_stream(request.content, stage1_results, stage2_results, history, context):
+            async for chunk in stage3_synthesize_final_stream(request.content, stage1_results, history, context):
                 full_response += chunk
                 yield f"data: {json.dumps({'type': 'stage3_chunk', 'chunk': chunk})}\n\n"
             
@@ -269,9 +262,9 @@ async def send_message_stream(conversation_id: str, request: SendMessageRequest)
             await storage.add_assistant_message(
                 conversation_id,
                 stage1_results,
-                stage2_results,
+                [], # No stage 2
                 stage3_result,
-                metadata
+                {} # No metadata
             )
 
             # Send completion event

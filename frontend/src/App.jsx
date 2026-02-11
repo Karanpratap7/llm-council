@@ -88,7 +88,6 @@ function App() {
         metadata: null,
         loading: {
           stage1: false,
-          stage2: false,
           stage3: false,
         },
       };
@@ -121,25 +120,6 @@ function App() {
             });
             break;
 
-          case 'stage2_start':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.loading.stage2 = true;
-              return { ...prev, messages };
-            });
-            break;
-
-          case 'stage2_complete':
-            setCurrentConversation((prev) => {
-              const messages = [...prev.messages];
-              const lastMsg = messages[messages.length - 1];
-              lastMsg.stage2 = event.data;
-              lastMsg.metadata = event.metadata;
-              lastMsg.loading.stage2 = false;
-              return { ...prev, messages };
-            });
-            break;
 
           case 'stage3_start':
             setCurrentConversation((prev) => {
