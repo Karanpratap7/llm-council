@@ -2,6 +2,7 @@
 
 from .openrouter import query_models_parallel, query_model, query_model_stream # explicitly import query_model_stream
 from .config import COUNCIL_MODELS, CHAIRMAN_MODEL
+from typing import List, Dict, Any, Tuple
 
 
 async def stage1_collect_responses(
